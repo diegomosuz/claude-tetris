@@ -1,0 +1,90 @@
+name: Claude Issue Triage
+
+on:
+  issues:
+    types: [opened, edited]
+
+concurrency:
+  group: claude-issue-triage-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  triage:
+    if: github.event.issue.pull_request == null && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Issue Triage
+        id: claude-triage
+        uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ github.token }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          claude_args: >-
+            --allowedTools "Read,Glob,Grep,Bash(gh issue view:*),Bash(gh issue edit:*),Bash(gh label list:*),Bash(gh label create:*),Bash(gh issue comment:*),Bash(gh api:*)"
+          prompt: |
+            Estás haciendo triaje automático del issue #${{ github.event.issue.number }} del
+            repositorio ${{ github.repository }} (un juego de Tetris en JS/HTML/CSS puro,
+            ver CLAUDE.md para la arquitectura). NO modifiques código, NO crees ramas ni PRs.
+
+            Pasos:
+
+            1. Lee el issue completo:
+               gh issue view ${{ github.event.issue.number }} --json title,body,labels,comments
+
+            2. Lee CLAUDE.md y el código relevante (index.html, style.css, game.js) para
+               entender la arquitectura y ubicar las funciones/áreas relacionadas con el
+               problema descrito (p. ej. collide, tryRotate, clearLines, spawn, loop,
+               draw, drawNext, listener de keydown, constantes de configuración, etc.).
+
+            3. Labels: primero ejecuta `gh label list --limit 100` para ver qué existe.
+               Usa este conjunto base, creando con `gh label create` (con color y
+               descripción breve) cualquiera que falte:
+                 - Tipo: bug, enhancement, question, documentation
+                 - Área: gameplay, ui, rendering, input, scoring
+                 - Prioridad: "priority: high", "priority: medium", "priority: low"
+                 - Esfuerzo: "size: S", "size: M", "size: L"
+               Elige las etiquetas que apliquen (normalmente 1 de tipo, 1+ de área,
+               1 de prioridad, 1 de esfuerzo) según el contenido real del issue.
+               Aplícalas con:
+                 gh issue edit ${{ github.event.issue.number }} --add-label "..."
+               Si el issue ya tenía labels de este mismo conjunto base que ya no
+               corresponden tras una edición, quítalas con --remove-label. No toques
+               labels que no pertenezcan a este conjunto base (por ejemplo, labels
+               puestas manualmente por una persona).
+
+            4. Diagnóstico: escribe un comentario en Markdown, en español, que empiece
+               en su primera línea con el marcador oculto exacto `<!-- claude-triage -->`
+               y luego incluya estas secciones:
+                 ## Resumen
+                 ## Clasificación
+                 (tipo / área / prioridad / esfuerzo elegidos, con una justificación breve)
+                 ## Diagnóstico técnico
+                 (causa probable, con referencias concretas a archivo:función/línea)
+                 ## Enfoque de solución propuesto
+                 (pasos concretos para implementar el fix, reutilizando funciones
+                 existentes cuando aplique)
+                 ## Riesgos y verificación
+                 (casos borde a cuidar y cómo probar el cambio manualmente en el navegador)
+                 ## Preguntas abiertas
+                 (solo si falta información para diagnosticar con certeza; si no falta
+                 nada, escribe "Ninguna.")
+
+            5. Antes de publicar el comentario, revisa si ya existe uno de un triaje
+               previo (búscalo por el marcador `<!-- claude-triage -->` en:
+                 gh issue view ${{ github.event.issue.number }} --json comments
+               ). Si existe (esto pasa cuando el issue fue editado), actualízalo con:
+                 gh api -X PATCH repos/${{ github.repository }}/issues/comments/<id> \
+                   -f body='<nuevo contenido completo>'
+               en vez de crear un comentario nuevo. Si no existe, créalo con:
+                 gh issue comment ${{ github.event.issue.number }} --body '...'
