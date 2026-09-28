@@ -80,6 +80,21 @@ body {
   border-radius: 4px;
 }
 
+.skin-select {
+  background: #14141c;
+  color: #e0e0e0;
+  border: 1px solid #2a2a3a;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.skin-select:focus {
+  outline: 1px solid #7aa2f7;
+}
+
 /* ---- Controles ---- */
 .controls ul {
   list-style: none;
